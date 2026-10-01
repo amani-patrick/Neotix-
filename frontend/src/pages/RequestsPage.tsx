@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { listRequests } from "../api/endpoints";
@@ -107,7 +106,7 @@ export function RequestsPage() {
           message={error instanceof Error ? error.message : "Something went wrong while loading requests."}
           onRetry={() => refetch()}
         />
-      ) : sorted.length === 0 ? (
+      ) : requests.length === 0 ? (
         <EmptyState
           message={
             status
@@ -147,7 +146,7 @@ export function RequestsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isFetching && <SkeletonRows cols={isClient ? 7 : 8} rows={3} />}
                   {!isFetching &&
-                    sorted.map((r) => (
+                    requests.map((r) => (
                       <tr key={r.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3">
                           <Link
@@ -182,11 +181,22 @@ export function RequestsPage() {
                 </tbody>
               </table>
             </div>
+            {data && (
+              <Pagination
+                page={data.page}
+                pages={data.pages}
+                total={data.total}
+                pageSize={data.page_size}
+                onPage={(p) => setParam("page", String(p))}
+              />
+            )}
           </div>
 
           {/* Mobile cards (below md) */}
           <div className="space-y-3 md:hidden">
             {isFetching && <LoadingState label="Loading requests…" />}
+            {!isFetching &&
+              requests.map((r) => (
                 <Link
                   key={r.id}
                   to={`/requests/${r.id}`}
@@ -220,6 +230,15 @@ export function RequestsPage() {
                   </dl>
                 </Link>
               ))}
+            {data && (
+              <Pagination
+                page={data.page}
+                pages={data.pages}
+                total={data.total}
+                pageSize={data.page_size}
+                onPage={(p) => setParam("page", String(p))}
+              />
+            )}
           </div>
         </>
       )}

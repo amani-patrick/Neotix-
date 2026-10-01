@@ -23,7 +23,7 @@ export function DashboardPage() {
   const { user } = useAuth();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["requests", "dashboard"],
-    queryFn: () => listRequests(),
+    queryFn: () => listRequests({ page: 1, page_size: 100 }),
   });
 
   if (isLoading) return <LoadingState label="Loading dashboard…" />;
@@ -36,7 +36,7 @@ export function DashboardPage() {
     );
   }
 
-  const requests = data ?? [];
+  const requests = data?.items ?? [];
   const counts: Record<RequestStatus, number> = {
     submitted: 0,
     in_progress: 0,
