@@ -26,7 +26,13 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole, name="user_role", native_enum=True),
+        Enum(
+            UserRole,
+            name="user_role",
+            native_enum=True,
+            # Store the lowercase .value ('client') in the DB, not the .name ('CLIENT').
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     organization: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -6,7 +6,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-desk}
       POSTGRES_DB: ${POSTGRES_DB:-desk}
     ports:
-      - "5433:5432"
+      # Host port 5443 to avoid clashing with other local Postgres instances;
+      # inside the compose network the API still uses postgres:5432.
+      - "5443:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,6 +22,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://desk:desk@postgres:5432/desk
+      LOG_FORMAT: json
     ports:
       - "8000:8000"
     depends_on:
@@ -27,6 +30,7 @@ services:
         condition: service_healthy
     command: >
       sh -c "alembic upgrade head &&
+             python -m app.seed seed/users.json &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 volumes:

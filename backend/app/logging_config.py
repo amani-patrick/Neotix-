@@ -25,10 +25,10 @@ def configure_logging() -> None:
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]
 
-    if settings.app_env == "dev":
-        renderer: Any = structlog.dev.ConsoleRenderer()
+    if settings.log_format == "json":
+        renderer: Any = structlog.processors.JSONRenderer()
     else:
-        renderer = structlog.processors.JSONRenderer()
+        renderer = structlog.dev.ConsoleRenderer()
 
     structlog.configure(
         processors=[

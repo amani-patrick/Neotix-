@@ -4,9 +4,18 @@ import structlog
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.api import (
+    analytics,
+    assignments,
+    auth,
+    episodes,
+    requests,
+    users,
+)
 from app.config import get_settings
 from app.db.session import engine
 from app.logging_config import configure_logging
+from app.middleware import RequestLoggingMiddleware
 
 logger = structlog.get_logger(__name__)
 
@@ -14,6 +23,7 @@ logger = structlog.get_logger(__name__)
 def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
+    settings.validate_secrets()
 
     app = FastAPI(
         title=settings.app_name,
@@ -23,6 +33,16 @@ def create_app() -> FastAPI:
             "requests, assignment workflow, import and analytics."
         ),
     )
+
+    app.include_router(auth.router)
+    app.include_router(users.router)
+    app.include_router(requests.router)
+    app.include_router(assignments.router)
+    app.include_router(episodes.router)
+    app.include_router(analytics.router)
+
+    # One structured log line per request (method, path, status, duration, user).
+    app.add_middleware(RequestLoggingMiddleware)
 
     @app.get("/health", tags=["health"])
     def health() -> dict:

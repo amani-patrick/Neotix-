@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     app_name: str = "Dataset Request Desk"
     app_env: str = "dev"  # dev | test | prod
     log_level: str = "INFO"
+    log_format: str = "console"  # console (pretty) | json (structured)
 
     database_url: str = "postgresql+psycopg://desk:desk@localhost:5433/desk"
 
@@ -22,6 +23,13 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 12
+
+    def validate_secrets(self) -> None:
+        """Fail fast if running in prod with an insecure default secret."""
+        if self.app_env == "prod" and self.jwt_secret == "dev-only-secret-change-me":
+            raise RuntimeError(
+                "JWT_SECRET must be set to a real secret when APP_ENV=prod"
+            )
 
 
 @lru_cache

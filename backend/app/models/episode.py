@@ -46,7 +46,12 @@ class Episode(Base):
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     operator_name: Mapped[str] = mapped_column(String(255), nullable=False)
     quality: Mapped[EpisodeQuality] = mapped_column(
-        Enum(EpisodeQuality, name="episode_quality", native_enum=True),
+        Enum(
+            EpisodeQuality,
+            name="episode_quality",
+            native_enum=True,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

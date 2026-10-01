@@ -7,6 +7,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 from app.models.request import RequestStatus
 
+# Shared kwargs so both columns reuse the same PG enum type created for
+# requests.status (Alembic creates the type on the first table that uses it).
+_STATUS_ENUM_ARGS = dict(
+    name="request_status",
+    native_enum=True,
+    # Store the lowercase .value ('submitted'), not the .name ('SUBMITTED').
+    values_callable=lambda e: [m.value for m in e],
+)
+
 
 class RequestStatusHistory(Base):
     """Audit trail entry for a request status change."""
@@ -22,11 +31,11 @@ class RequestStatusHistory(Base):
         ForeignKey("requests.id", ondelete="CASCADE"), nullable=False
     )
     from_status: Mapped[RequestStatus | None] = mapped_column(
-        Enum(RequestStatus, name="request_status", native_enum=True),
+        Enum(RequestStatus, **_STATUS_ENUM_ARGS),
         nullable=True,
     )
     to_status: Mapped[RequestStatus] = mapped_column(
-        Enum(RequestStatus, name="request_status", native_enum=True),
+        Enum(RequestStatus, **_STATUS_ENUM_ARGS),
         nullable=False,
     )
     changed_by: Mapped[uuid.UUID] = mapped_column(

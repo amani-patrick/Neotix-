@@ -8,7 +8,6 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
-    Numeric,
     String,
     Text,
     func,
@@ -53,7 +52,12 @@ class Request(Base):
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[RequestStatus] = mapped_column(
-        Enum(RequestStatus, name="request_status", native_enum=True),
+        Enum(
+            RequestStatus,
+            name="request_status",
+            native_enum=True,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
         default=RequestStatus.SUBMITTED,
         server_default="submitted",
