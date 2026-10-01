@@ -19,6 +19,13 @@ function isPast(iso: string): boolean {
 
 const ACTIVE: RequestStatus[] = ["submitted", "in_progress", "rejected"];
 
+const STAT_ACCENTS = [
+  "border-l-slate-300",
+  "border-l-blue-400",
+  "border-l-amber-400",
+  "border-l-emerald-400",
+];
+
 export function DashboardPage() {
   const { user } = useAuth();
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -57,37 +64,49 @@ export function DashboardPage() {
 
   const isClient = user?.role === "client";
 
+  const stats = [
+    { label: isClient ? "Total requests" : "All requests", value: total },
+    { label: "Active", value: active },
+    { label: isClient ? "Awaiting my review" : "Delivered", value: awaitingReview },
+    { label: "Completed", value: completed },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">
+        <h1 className="text-lg font-semibold text-slate-900">
           {isClient ? "My requests" : "Fulfilment overview"}
         </h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-0.5 text-sm text-slate-500">
           {isClient
             ? "Track your dataset requests and review deliveries."
             : "All client requests and their fulfilment status."}
         </p>
       </div>
 
+      {/* Stat cards */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatCard label={isClient ? "Total requests" : "All requests"} value={total} />
-        <StatCard label="Active" value={active} />
-        <StatCard label={isClient ? "Awaiting my review" : "Delivered"} value={awaitingReview} />
-        <StatCard label="Completed" value={completed} />
+        {stats.map((s, i) => (
+          <StatCard key={s.label} label={s.label} value={s.value} accent={STAT_ACCENTS[i] ?? "border-l-slate-300"} />
+        ))}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h2 className="text-sm font-semibold text-slate-900">Recent requests</h2>
+      {/* Recent requests */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+          <h2 className="text-sm font-semibold text-slate-800">Recent requests</h2>
+          <Link to="/requests" className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline">
+            View all
+          </Link>
         </div>
+
         {requests.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
+          <div className="p-10 text-center text-sm text-slate-400">
             {isClient ? (
               <>
                 No requests yet.{" "}
                 <Link to="/requests/new" className="font-medium text-blue-600 hover:underline">
-                  Create your first dataset request
+                  Create your first
                 </Link>
               </>
             ) : (
@@ -95,48 +114,58 @@ export function DashboardPage() {
             )}
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-2.5">Task</th>
-                <th className="px-4 py-2.5">Needed</th>
-                <th className="px-4 py-2.5">Deadline</th>
-                <th className="px-4 py-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recent.map((r: RequestSummary) => (
-                <tr key={r.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <Link
-                      to={`/requests/${r.id}`}
-                      className="font-medium text-blue-600 hover:underline"
-                    >
-                      {r.task_name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{r.episodes_requested}</td>
-                  <td className={`px-4 py-3 ${isPast(r.deadline) ? "font-medium text-red-600" : "text-slate-700"}`}>
-                    {formatDate(r.deadline)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <RequestStatusBadge status={r.status} />
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-5 py-2.5">Task</th>
+                  <th className="px-5 py-2.5">Needed</th>
+                  <th className="px-5 py-2.5">Deadline</th>
+                  <th className="px-5 py-2.5">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {recent.map((r: RequestSummary) => (
+                  <tr key={r.id} className="group transition-colors hover:bg-slate-50/80">
+                    <td className="px-5 py-3">
+                      <Link
+                        to={`/requests/${r.id}`}
+                        className="font-medium text-slate-800 hover:text-blue-600"
+                      >
+                        {r.task_name}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3 tabular-nums text-slate-600">{r.episodes_requested}</td>
+                    <td className={`px-5 py-3 tabular-nums ${isPast(r.deadline) ? "font-medium text-red-500" : "text-slate-600"}`}>
+                      {formatDate(r.deadline)}
+                    </td>
+                    <td className="px-5 py-3">
+                      <RequestStatusBadge status={r.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent: string;
+}) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
+    <div className={`rounded-xl border border-slate-200 bg-white p-4 border-l-[3px] ${accent}`}>
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">{value}</p>
     </div>
   );
 }

@@ -42,7 +42,6 @@ export function LoginPage() {
             ? err.message
             : "Login failed. Please try again.",
       );
-      // Preserve entered email after a recoverable failure.
       setPassword("");
     } finally {
       setSubmitting(false);
@@ -50,47 +49,87 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <h1 className="text-lg font-semibold text-slate-900">Dataset Request Desk</h1>
-        <p className="mt-1 text-sm text-slate-500">Sign in to your account</p>
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+      {/* Subtle background texture */}
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-50 via-slate-50 to-slate-50" aria-hidden="true" />
 
-        {sessionExpired && (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" role="alert">
-            Your session has expired. Please log in again.
+      <div className="relative w-full max-w-sm">
+        {/* Logo mark + wordmark */}
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 shadow-md">
+            <svg width="20" height="20" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path
+                d="M2 2h4v4H2V2zM8 2h4v4H8V2zM2 8h4v4H2V8zM8 8h4v4H8V8z"
+                fill="white"
+                opacity="0.9"
+              />
+            </svg>
           </div>
-        )}
-        {formError && (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
-            {formError}
+          <div className="text-center">
+            <h1 className="text-base font-semibold tracking-tight text-slate-900">Neotix</h1>
+            <p className="text-sm text-slate-500">Dataset Request Desk</p>
           </div>
-        )}
+        </div>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
-          <Field label="Email" error={fieldErrors.email}>
-            <Input
-              type="email"
-              name="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </Field>
-          <Field label="Password" error={fieldErrors.password}>
-            <Input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </Field>
-          <Button type="submit" className="w-full" pending={submitting} pendingLabel="Signing in…">
-            Log in
-          </Button>
-        </form>
+        {/* Card */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-800">Sign in to your account</h2>
+
+          {sessionExpired && (
+            <div
+              className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800"
+              role="alert"
+            >
+              <svg className="mt-px h-3.5 w-3.5 shrink-0 text-amber-500" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm-.75 4.25a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5zm.75 6.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z" clipRule="evenodd" />
+              </svg>
+              Your session has expired. Please sign in again.
+            </div>
+          )}
+
+          {formError && (
+            <div
+              className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700"
+              role="alert"
+            >
+              <svg className="mt-px h-3.5 w-3.5 shrink-0 text-red-500" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm-.75 4.25a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5zm.75 6.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z" clipRule="evenodd" />
+              </svg>
+              {formError}
+            </div>
+          )}
+
+          <form onSubmit={onSubmit} className="mt-5 space-y-4" noValidate>
+            <Field label="Email" error={fieldErrors.email}>
+              <Input
+                type="email"
+                name="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </Field>
+            <Field label="Password" error={fieldErrors.password}>
+              <Input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </Field>
+            <Button
+              type="submit"
+              className="mt-1 w-full py-2"
+              pending={submitting}
+              pendingLabel="Signing in…"
+            >
+              Sign in
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );
