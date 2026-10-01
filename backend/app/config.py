@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://desk:desk@localhost:5433/desk"
 
+    # CORS: comma-separated frontend origins (browser clients only).
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
     # JWT / auth
     jwt_secret: str = "dev-only-secret-change-me"
     jwt_algorithm: str = "HS256"

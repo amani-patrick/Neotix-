@@ -5,12 +5,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import DbSession, require_operator
 from app.models import Episode, EpisodeQuality, Request, User, UserRole
 from app.schemas.request import AssignmentOut
-from app.services.assignment_service import ASSIGNMENT_RACE_HINT
 from app.services.assignment_service import assign_episode
 
 router = APIRouter(prefix="/requests", tags=["assignments"])
@@ -37,6 +36,7 @@ def list_assigned_episodes(
         select(Assignment)
         .where(Assignment.request_id == request_id)
         .order_by(Assignment.assigned_at)
+        .options(joinedload(Assignment.episode))
     ).scalars()
     return [AssignmentOut.model_validate(a) for a in rows]
 
@@ -71,4 +71,14 @@ def assign(
         )
 
     assignment = assign_episode(db, request, episode, user)
-    return AssignmentOut.model_validate(assignment)
+    db.refresh(assignment)
+    out = AssignmentOut.model_validate(assignment)
+    # Return with the embedded episode (business id, robot, quality) so the
+    # UI can render the assignment without a second fetch.
+    out.episode = {
+        "episode_id": episode.episode_id,
+        "robot_id": episode.robot_id,
+        "task_name": episode.task_name,
+        "quality": episode.quality.value,
+    }
+    return out

@@ -12,6 +12,7 @@ from app.api import (
     requests,
     users,
 )
+from app.cors import add_cors
 from app.config import get_settings
 from app.db.session import engine
 from app.logging_config import configure_logging
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
 
     # One structured log line per request (method, path, status, duration, user).
     app.add_middleware(RequestLoggingMiddleware)
+    add_cors(app)
 
     @app.get("/health", tags=["health"])
     def health() -> dict:

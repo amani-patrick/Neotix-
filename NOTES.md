@@ -1,4 +1,7 @@
-# NOTES — Dataset Request Desk backend
+# NOTES — Dataset Request Desk
+
+Design decisions, deliberate simplifications, security analysis, and scale
+notes for the whole system (backend + frontend).
 
 ## Design
 
@@ -15,8 +18,8 @@ users 1──N requests 1──N assignments N──1 episodes (unique episode_i
 - **State lives in `requests.status`** — a Postgres native enum
   (`submitted/in_progress/delivered/accepted/rejected`), so no arbitrary
   strings can be stored. The transition map and the role that owns each
-  target status live in one place (`app/services/request_service.py`), never
-  in route handlers.
+  target status live in one place (`backend/app/services/request_service.py`),
+  never in route handlers.
 - **The audit trail is `request_status_history`** (from, to, who, when,
   optional reason). Creating a request writes the first `submitted` row;
   that row is also the `submitted_at` used by the median metric — no
@@ -26,6 +29,28 @@ users 1──N requests 1──N assignments N──1 episodes (unique episode_i
   the concurrency race safe), `episodes.episode_id` UNIQUE (idempotent
   imports), CHECK `duration_seconds > 0`, CHECK `episodes_requested > 0`,
   native enums for role/quality/status.
+
+### Why clients cannot edit or delete their requests
+
+The brief (checked against the supplied candidate pack: `WORK_TASK.md` and
+`seed/README.md`) contains **no requirement to edit, cancel, or delete
+requests** — grep finds no such mention. The spreadsheet being replaced is
+modeled by the **state machine instead**:
+
+- A client who wants a change once work has started **rejects the delivery**
+  (`delivered → rejected → in_progress`), which is the rework loop.
+- A request that is simply abandoned stays `submitted` or `in_progress`;
+  nothing is destroyed.
+- Hard-deleting requests would also cascade-destroy **assignment and audit
+  history**, which the brief explicitly wants recorded ("Every status change
+  must be recorded with who did it and when") — deletion is therefore
+  anti-requirement.
+
+The detailed backend spec reinforces this: *"Do not add unnecessary
+functionality just because an endpoint seems convenient."* So there are
+intentionally no `PATCH /requests/{id}`, `DELETE /requests/{id}`, or
+unassignment endpoints. The `users` admin surface does have update
+(deactivate/role change) because the brief explicitly requires it.
 
 ### Difficult decisions
 
@@ -50,9 +75,9 @@ users 1──N requests 1──N assignments N──1 episodes (unique episode_i
 
 - **Recordings live outside the system** — the brief only requires episode
   metadata; there is no upload/storage surface to attack or back up.
-- **No unassignment endpoint.** The brief says deletion is optional and
-  warns against convenience endpoints; the rework loop (rejected →
-  in_progress) covers the operational need.
+- **No request edit/delete or unassignment endpoint** — see the section
+  above; the rework loop covers the operational need without destroying
+  history.
 - **Background jobs (the stretch item) were skipped** in favour of a
   complete, tested core.
 - **Sessions are stateless JWTs** — no refresh tokens, no revocation list.
@@ -82,24 +107,30 @@ now runs against real Postgres via Alembic rather than `create_all()`.
 - **Tokens**: short-lived HS256 JWTs from `JWT_SECRET` (env config; the app
   refuses to boot in `APP_ENV=prod` with the default secret). Tokens are
   never logged; the logging middleware records `user_id` from the resolved
-  user, not the token.
+  user, not the token. The frontend keeps the token in `localStorage` (with
+  the cached user) and clears it — plus the whole TanStack Query cache — on
+  logout and on any 401, so one client's data never leaks into another
+  session.
 - **Authorization**: every protected endpoint goes through the same
   dependency chain — resolve user → require active → require role →
   ownership scoping in the router/service. Verified by tests for every
   role/ownership combination, including a deactivated user with a still-
   valid token (403) and a forged-secret token (401).
-- **Input validation**: Pydantic v2 models on every input (emails, enum
-  statuses/qualities, positive counts, pagination bounds); SQLAlchemy
-  parameterized queries only (no string-built SQL anywhere).
+- **Input validation**: Pydantic v2 models on every backend input (emails,
+  enum statuses/qualities, positive counts, pagination bounds); Zod-style
+  client-side checks on the frontend are UX only — the backend re-validates
+  everything. SQLAlchemy parameterized queries only (no string-built SQL).
 - **The two vulnerabilities I'd worry about most in this kind of system:**
   1. **Broken object-level authorization (IDOR).** A client calling
      `GET /requests/123` for someone else's request is the classic internal-
      tool breach, because IDs sit in URLs and frontends leak them. Mitigated
      by scoping every read/transition/assignment through
      `_scoped_request()` and returning 404 (not 403) for foreign resources;
-     client lists filter by `client_id` at the SQL level. The risky variant
-     is a *new* endpoint someone adds later that skips the scoping helper —
-     that's what the ownership tests exist to catch.
+     client lists filter by `client_id` at the SQL level. The frontend shows
+     "Request unavailable" with no partial data when the backend denies
+     access. The risky variant is a *new* endpoint someone adds later that
+     skips the scoping helper — that's what the ownership tests exist to
+     catch.
   2. **Privilege escalation via the workflow.** If accept/reject were
      client-supplied "next status" without server-side role mapping, any
      client could accept its own request (or worse, an operator could
@@ -123,7 +154,8 @@ now runs against real Postgres via Alembic rather than `create_all()`.
     COPY-based path would be the next step for truly large files.
   - *Listing:* offset pagination degrades at deep pages — keyset
     (recorded_at, id) cursors would replace it; the indexes below are
-    already in that shape.
+    already in that shape. The episode browser is always server-paginated
+    (max 100 rows/request), so the frontend never touches the full table.
   - *Analytics:* already aggregate in SQL with `GROUP BY` +
     `percentile_cont`, filtered by `recorded_at` bounds, so they scan
     ranges, not tables. At hundreds of millions of rows the per-day/robot
@@ -140,9 +172,9 @@ now runs against real Postgres via Alembic rather than `create_all()`.
 ## AI tooling
 
 AI assistants (Codebuff/Claude) were used as a pair-programmer throughout:
-implementing routers/services/tests from the specification, debugging the
-Alembic enum-type downgrade failure and a Pydantic `model_validate` misuse,
-and drafting these documents. Every decision above, the test expectations
-against the real messy CSV, and the architecture were human-reviewed; the
-interview's live-session requirement is taken seriously — the code is
-structured to be explainable line by line.
+implementing routers/services/tests and the React UI from the two
+specifications, debugging the Alembic enum-type downgrade failure and a
+Pydantic `model_validate` misuse, and drafting these documents. Every
+decision above, the test expectations against the real messy CSV, and the
+architecture were human-reviewed; the interview's live-session requirement
+is taken seriously — the code is structured to be explainable line by line.

@@ -22,6 +22,17 @@ class TransitionRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class AssignmentEpisode(BaseModel):
+    """Episode info embedded in assignment responses (for UI display)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    episode_id: str
+    robot_id: str
+    task_name: str
+    quality: str
+
+
 class AssignmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,6 +40,7 @@ class AssignmentOut(BaseModel):
     episode_id: uuid.UUID
     assigned_by: uuid.UUID
     assigned_at: datetime
+    episode: AssignmentEpisode | None = None
 
 
 class StatusHistoryOut(BaseModel):
@@ -43,7 +55,8 @@ class StatusHistoryOut(BaseModel):
 
 
 class RequestOut(BaseModel):
-    """List view."""
+    """List/detail view row. The assigned count is filled in by the router
+    from a DB subquery (0 for a freshly created request)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,11 +69,21 @@ class RequestOut(BaseModel):
     status: RequestStatus
     created_at: datetime
     updated_at: datetime
+    assigned_episode_count: int = 0
 
 
 class RequestDetail(RequestOut):
     """Detail view: includes assigned episodes and the audit trail."""
 
-    assigned_episode_count: int
     assignments: list[AssignmentOut] = []
     status_history: list[StatusHistoryOut] = []
+
+
+class RequestPage(BaseModel):
+    """Paginated request list (server-side filtering + counting)."""
+
+    items: list[RequestOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int

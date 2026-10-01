@@ -1,0 +1,60 @@
+# Dataset Request Desk — full system (database + API + frontend).
+#
+#   docker compose up --build
+#
+# Frontend:  http://localhost:3000   (nginx, proxies /api -> backend)
+# API:       http://localhost:8000   (docs at /docs)
+# Postgres:  localhost:5443          (avoid clashing with common local PG ports)
+#
+# See backend/.env.example for configuration; copy it to backend/.env to
+# override the dev defaults (JWT secret, ports, etc.).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-desk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-desk}
+      POSTGRES_DB: ${POSTGRES_DB:-desk}
+    ports:
+      - "5443:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-desk} -d ${POSTGRES_DB:-desk}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    env_file: backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://desk:desk@postgres:5432/desk
+      LOG_FORMAT: json
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Wait for the database, run migrations, seed users, then serve.
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.seed seed/users.json &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

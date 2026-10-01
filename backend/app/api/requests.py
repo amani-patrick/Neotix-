@@ -8,8 +8,10 @@ Ownership rules enforced here:
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+import math
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import CurrentUser, DbSession
@@ -26,6 +28,7 @@ from app.schemas.request import (
     RequestCreate,
     RequestDetail,
     RequestOut,
+    RequestPage,
     StatusHistoryOut,
     TransitionRequest,
 )
@@ -95,6 +98,7 @@ def create_request(body: RequestCreate, db: DbSession, user: CurrentUser) -> Req
         notes=body.notes,
         status=RequestStatus.SUBMITTED,
     )
+    request.assigned_episode_count = 0  # presentation default before flush
     db.add(request)
     # Record the creation as the first history entry: this is the
     # `submitted_at` timestamp used by the submitted->delivered median.
@@ -113,14 +117,49 @@ def create_request(body: RequestCreate, db: DbSession, user: CurrentUser) -> Req
 
 @router.get(
     "",
-    response_model=list[RequestOut],
-    summary="List requests (clients see only their own; operators/admins see all)",
+    response_model=RequestPage,
+    summary="List requests, paginated (clients see only their own; operators/admins see all)",
 )
-def list_requests(db: DbSession, user: CurrentUser) -> list[Request]:
-    stmt = select(Request).order_by(Request.created_at.desc())
+def list_requests(
+    db: DbSession,
+    user: CurrentUser,
+    status: RequestStatus | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+) -> RequestPage:
+    # One correlated subquery computes each request's assigned count in SQL,
+    # so the list view can show fulfilment progress without N+1 queries.
+    assigned_count = (
+        select(func.count())
+        .where(Assignment.request_id == Request.id)
+        .correlate(Request)
+        .scalar_subquery()
+    )
+    stmt = select(Request, assigned_count)
     if user.role is UserRole.CLIENT:
         stmt = stmt.where(Request.client_id == user.id)
-    return list(db.execute(stmt).scalars())
+    if status is not None:
+        stmt = stmt.where(Request.status == status)
+
+    total = db.execute(
+        select(func.count()).select_from(stmt.order_by(None).subquery())
+    ).scalar_one()
+    pages = max(1, math.ceil(total / page_size))
+
+    rows = db.execute(
+        stmt.order_by(Request.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+
+    items: list[RequestOut] = []
+    for request, count in rows:
+        item = RequestOut.model_validate(request)
+        item.assigned_episode_count = int(count)
+        items.append(item)
+    return RequestPage(
+        items=items, total=total, page=page, page_size=page_size, pages=pages
+    )
 
 
 @router.get(
