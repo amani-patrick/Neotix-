@@ -57,10 +57,10 @@ DATABASE_URL='postgresql+psycopg://desk:desk@localhost:5439/desk_test' \
   .venv/bin/python -m pytest
 ```
 
-47 tests cover: login/RBAC, ownership scoping, the full transition matrix,
-the delivery rule, assignment rules (including a real concurrency race),
-import idempotency against the actual messy `seed/episodes.csv`, and all
-four analytics metrics.
+53 tests cover: login/RBAC, ownership scoping, the full transition matrix,
+the delivery rule, assignment rules — including the capacity guard, the
+unassign flow, and a real concurrency race — import idempotency against the
+actual messy `seed/episodes.csv`, and all four analytics metrics.
 
 ## CSV episode import
 
@@ -68,9 +68,12 @@ CLI (recommended):
 
 ```bash
 python -m app.cli import-episodes seed/episodes.csv
+# inside the compose stack:
+docker compose exec api python -m app.cli import-episodes seed/episodes_large.csv
 ```
 
-Operator-only API endpoint: `POST /episodes/import` (multipart CSV upload).
+Operator-only API endpoint: `POST /episodes/import` (multipart CSV upload) —
+also available in the UI on the Episodes page (Upload CSV).
 
 Both are idempotent — re-running against the same file never creates
 duplicates — and report exactly what happened:
@@ -126,7 +129,8 @@ Python. See `NOTES.md` for how this behaves at millions of rows.
 | `GET /requests/{id}`                       | client: own; operator/admin: all | detail + history     |
 | `POST /requests/{id}/transition`           | role per target status | workflow transitions + audit row         |
 | `GET /requests/{id}/episodes`              | operator/admin         | assignments of a request                 |
-| `POST /requests/{id}/assignments`          | operator/admin         | assign an episode (rules + race-safe)    |
+| `POST /requests/{id}/assignments`          | operator/admin         | assign an episode (capacity + race-safe) |
+| `DELETE /requests/{id}/assignments/{a_id}` | operator/admin         | unassign (audit row written; open requests only) |
 | `GET /episodes`                            | operator/admin         | filter (task/quality/robot) + pagination |
 | `POST /episodes/import`                    | operator/admin         | CSV import                               |
 | `GET /analytics`                           | operator/admin         | the four metrics                         |

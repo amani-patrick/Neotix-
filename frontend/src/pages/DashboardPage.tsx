@@ -31,6 +31,7 @@ export function DashboardPage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["requests", "dashboard"],
     queryFn: () => listRequests({ page: 1, page_size: 100 }),
+    refetchInterval: 15_000,
   });
 
   if (isLoading) return <LoadingState label="Loading dashboard…" />;

@@ -1,5 +1,7 @@
 """Assignment rule tests: quality gate, one-request-per-episode, races."""
 
+import uuid
+
 from tests.conftest import auth_header
 
 
@@ -115,6 +117,146 @@ def test_cannot_assign_to_closed_request(client):
     # re-assigned to another one.
     res = _assign(client, ops_token, rid, "EP-80004")
     assert res.status_code == 409
+
+
+def test_cannot_assign_beyond_requested_capacity(client):
+    """The delivery rule stays meaningful: no over-assignment past the ask."""
+    ops_token = _login(client, "ops1@example.com", "ops123")
+    rid = _setup(client, ops_token)
+
+    extra = CSV_ROWS + "EP-80004,arm-01,pick cup,2026-08-04T10:00:00,55,Aline,good\n"
+    res = client.post(
+        "/episodes/import",
+        headers=auth_header(ops_token),
+        files={"file": ("more.csv", extra.encode(), "text/csv")},
+    )
+    assert res.status_code == 200, res.text
+
+    # Request asks for 3; EP-80003 is bad, so it never gets assigned.
+    assert _assign(client, ops_token, rid, "EP-80001").status_code == 201
+    assert _assign(client, ops_token, rid, "EP-80002").status_code == 201
+    assert _assign(client, ops_token, rid, "EP-80004").status_code == 201
+
+    # Fourth good episode exists but the request is full: 409, not 201.
+    res = client.post(
+        "/episodes/import",
+        headers=auth_header(ops_token),
+        files={
+            "file": (
+                "more2.csv",
+                (extra + "EP-80005,arm-02,pick cup,2026-08-05T10:00:00,65,Eric,good\n").encode(),
+                "text/csv",
+            )
+        },
+    )
+    assert res.status_code == 200, res.text
+    res = _assign(client, ops_token, rid, "EP-80005")
+    assert res.status_code == 409
+    assert "required number" in res.json()["detail"]
+
+
+def test_unassign_frees_episode_and_writes_history(client):
+    ops_token = _login(client, "ops1@example.com", "ops123")
+    rid = _setup(client, ops_token)
+
+    assert _assign(client, ops_token, rid, "EP-80001").status_code == 201
+
+    assignment_id = client.get(
+        f"/requests/{rid}/episodes", headers=auth_header(ops_token)
+    ).json()[0]["id"]
+
+    res = client.delete(
+        f"/requests/{rid}/assignments/{assignment_id}", headers=auth_header(ops_token)
+    )
+    assert res.status_code == 204, res.text
+
+    # The assignment is gone...
+    assert client.get(f"/requests/{rid}/episodes", headers=auth_header(ops_token)).json() == []
+
+    # ...and the audit trail recorded the removal.
+    detail = client.get(f"/requests/{rid}", headers=auth_header(ops_token)).json()
+    assert any(
+        "EP-80001" in (h["reason"] or "") for h in detail["status_history"]
+    ), detail["status_history"]
+
+    # The freed episode can be assigned again.
+    assert _assign(client, ops_token, rid, "EP-80001").status_code == 201
+
+
+def test_unassign_allows_replacing_an_over_assigned_episode(client):
+    """The operator workflow: unassign one, then assign a replacement."""
+    ops_token = _login(client, "ops1@example.com", "ops123")
+    rid = _setup(client, ops_token)
+
+    for ep in ("EP-80001", "EP-80002"):
+        assert _assign(client, ops_token, rid, ep).status_code == 201
+
+    first_id = client.get(f"/requests/{rid}/episodes", headers=auth_header(ops_token)).json()[0]["id"]
+    assert client.delete(
+        f"/requests/{rid}/assignments/{first_id}", headers=auth_header(ops_token)
+    ).status_code == 204
+
+    # Capacity freed: a different episode now fits (request wants 3).
+    assert _assign(client, ops_token, rid, "EP-80003").status_code == 400  # bad quality
+    extra = CSV_ROWS + "EP-80004,arm-01,pick cup,2026-08-04T10:00:00,55,Aline,good\n"
+    client.post(
+        "/episodes/import", headers=auth_header(ops_token), files={"file": ("m.csv", extra.encode(), "text/csv")}
+    )
+    assert _assign(client, ops_token, rid, "EP-80004").status_code == 201
+
+
+def test_client_cannot_unassign(client):
+    ops_token = _login(client, "ops1@example.com", "ops123")
+    rid = _setup(client, ops_token)
+    assert _assign(client, ops_token, rid, "EP-80001").status_code == 201
+    assignment_id = client.get(
+        f"/requests/{rid}/episodes", headers=auth_header(ops_token)
+    ).json()[0]["id"]
+
+    client_token = _login(client, "client-a@example.com", "client123")
+    res = client.delete(
+        f"/requests/{rid}/assignments/{assignment_id}", headers=auth_header(client_token)
+    )
+    assert res.status_code == 403
+
+
+def test_cannot_unassign_from_delivered_request(client):
+    ops_token = _login(client, "ops1@example.com", "ops123")
+    rid = _setup(client, ops_token)
+    # Deliver properly: import and assign the full 3 requested episodes.
+    extra = CSV_ROWS + "EP-80004,arm-01,pick cup,2026-08-04T10:00:00,55,Aline,good\n"
+    res = client.post(
+        "/episodes/import",
+        headers=auth_header(ops_token),
+        files={"file": ("more.csv", extra.encode(), "text/csv")},
+    )
+    assert res.status_code == 200, res.text
+    for ep in ("EP-80001", "EP-80002", "EP-80004"):
+        assert _assign(client, ops_token, rid, ep).status_code == 201
+    client.post(
+        f"/requests/{rid}/transition", headers=auth_header(ops_token), json={"status": "in_progress"}
+    )
+    res = client.post(
+        f"/requests/{rid}/transition", headers=auth_header(ops_token), json={"status": "delivered"}
+    )
+    assert res.status_code == 200, res.text
+    assignment_id = client.get(
+        f"/requests/{rid}/episodes", headers=auth_header(ops_token)
+    ).json()[0]["id"]
+
+    res = client.delete(
+        f"/requests/{rid}/assignments/{assignment_id}", headers=auth_header(ops_token)
+    )
+    assert res.status_code == 409
+
+
+def test_unassign_unknown_assignment_returns_404(client):
+    ops_token = _login(client, "ops1@example.com", "ops123")
+    rid = _setup(client, ops_token)
+    res = client.delete(
+        f"/requests/{rid}/assignments/{uuid.uuid4()}", headers=auth_header(ops_token)
+    )
+    assert res.status_code == 404
 
 
 def test_concurrent_double_assignment_only_one_wins(client, db_session):

@@ -62,6 +62,8 @@ export function RequestsPage() {
         page_size: 20,
       }),
     placeholderData: (prev) => prev,
+    // Background poll keeps counts/status fresh for operators watching the queue.
+    refetchInterval: 15_000,
   });
 
   const requests = data?.items ?? [];

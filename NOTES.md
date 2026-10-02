@@ -46,11 +46,33 @@ modeled by the **state machine instead**:
   must be recorded with who did it and when") — deletion is therefore
   anti-requirement.
 
-The detailed backend spec reinforces this: *"Do not add unnecessary
-functionality just because an endpoint seems convenient."* So there are
-intentionally no `PATCH /requests/{id}`, `DELETE /requests/{id}`, or
-unassignment endpoints. The `users` admin surface does have update
-(deactivate/role change) because the brief explicitly requires it.
+So there are intentionally no `PATCH /requests/{id}` or
+`DELETE /requests/{id}` endpoints. The `users` admin surface does have
+update (deactivate/role change) because the brief explicitly requires it.
+
+### Assignments: capacity guard and unassignment (added after review)
+
+Two operational gaps surfaced once the UI was exercised end to end:
+
+1. **Over-assignment.** The DB unique constraint guarantees one request per
+   episode, but nothing stopped assigning *more* episodes than requested,
+   which silently hollowed out the delivery rule. `assign_episode` now
+   counts existing assignments in SQL and returns **409** once
+   `episodes_requested` is reached. To swap an episode, the operator first
+   unassigns one.
+2. **No way to undo a mis-assignment.** `DELETE
+   /requests/{id}/assignments/{assignment_id}` (operator/admin) frees the
+   episode and writes a reason to the request's status history (`to_status`
+   == `from_status`: the status did not change, but the audit trail must
+   still say who removed what, and when). It is allowed in exactly the same
+   open window as assignment (submitted/in_progress) — a delivered request
+   is frozen, which is what the client is reviewing.
+
+The detailed backend spec's warning — *"Do not add unnecessary
+functionality just because an endpoint seems convenient"* — still applies:
+unassignment is not a convenience, it is the counterpart of the capacity
+rule and the only way to correct an operator mistake without destroying
+history.
 
 ### Difficult decisions
 
@@ -75,9 +97,9 @@ unassignment endpoints. The `users` admin surface does have update
 
 - **Recordings live outside the system** — the brief only requires episode
   metadata; there is no upload/storage surface to attack or back up.
-- **No request edit/delete or unassignment endpoint** — see the section
-  above; the rework loop covers the operational need without destroying
-  history.
+- **No request edit/delete** — see the section above; the rework loop covers
+  the operational need without destroying history. Assignment mistakes are
+  corrected with the unassign endpoint (history kept), not edits.
 - **Background jobs (the stretch item) were skipped** in favour of a
   complete, tested core.
 - **Sessions are stateless JWTs** — no refresh tokens, no revocation list.

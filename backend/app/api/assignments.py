@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import DbSession, require_operator
-from app.models import Episode, EpisodeQuality, Request, User, UserRole
+from app.models import Assignment, Episode, EpisodeQuality, Request, User, UserRole
 from app.schemas.request import AssignmentOut
-from app.services.assignment_service import assign_episode
+from app.services.assignment_service import assign_episode, unassign_episode
 
 router = APIRouter(prefix="/requests", tags=["assignments"])
 
@@ -82,3 +82,36 @@ def assign(
         "quality": episode.quality.value,
     }
     return out
+
+
+@router.delete(
+    "/{request_id}/assignments/{assignment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unassign an episode from a request (operator/admin only)",
+    description=(
+        "Frees the episode so it can be (re)assigned elsewhere. Allowed only "
+        "while the request is open (submitted/in_progress). The removal is "
+        "recorded in the request's status history."
+    ),
+)
+def unassign(
+    request_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    db: DbSession,
+    user: User = Depends(require_operator),
+) -> None:
+    request = db.get(Request, request_id)
+    if request is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    assignment = db.execute(
+        select(Assignment)
+        .where(Assignment.id == assignment_id, Assignment.request_id == request_id)
+        .options(joinedload(Assignment.episode))
+    ).scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found"
+        )
+
+    unassign_episode(db, request, assignment, user)

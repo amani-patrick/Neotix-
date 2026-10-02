@@ -66,7 +66,7 @@ def test_analytics_metrics(client, db_session):
     res = client.get(
         "/analytics",
         headers=auth_header(ops),
-        params={"from": "2026-08-01T00:00:00Z", "to": "2026-10-02T00:00:00Z"},
+        params={"from": "2026-08-01T00:00:00Z", "to": "2026-12-31T23:59:59Z"},
     )
     assert res.status_code == 200, res.text
     data = res.json()

@@ -94,7 +94,7 @@ describe("LoginPage", () => {
       </QueryClientProvider>,
     );
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /log in/i }));
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
     expect(await screen.findByText("Email is required")).toBeTruthy();
     expect(screen.getByText("Password is required")).toBeTruthy();
   });
@@ -117,7 +117,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Email"), "client-a@example.com");
     await user.type(screen.getByLabelText("Password"), "wrong");
-    await user.click(screen.getByRole("button", { name: /log in/i }));
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
 
     expect(await screen.findByText("Incorrect email or password")).toBeTruthy();
   });

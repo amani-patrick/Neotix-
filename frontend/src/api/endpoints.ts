@@ -6,6 +6,7 @@ import type {
   AuthUser,
   EpisodePage,
   EpisodeQuality,
+  ImportReport,
   LoginResponse,
   RequestDetail,
   RequestPage,
@@ -102,10 +103,23 @@ export async function listEpisodes(filters: EpisodeFilters): Promise<EpisodePage
   return api.get<EpisodePage>(`/episodes${qs({ ...filters })}`);
 }
 
+export async function importEpisodes(file: File): Promise<ImportReport> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.postForm<ImportReport>("/episodes/import", formData);
+}
+
 // --- analytics ------------------------------------------------------------
 
 export async function getAnalytics(from: string, to: string): Promise<Analytics> {
   return api.get<Analytics>(`/analytics${qs({ from, to })}`);
+}
+
+export async function unassignEpisode(
+  requestId: string,
+  assignmentId: string,
+): Promise<void> {
+  return api.delete(`/requests/${requestId}/assignments/${assignmentId}`);
 }
 
 // --- users (admin) ----------------------------------------------------------

@@ -114,4 +114,5 @@ export const api = {
   postForm: <T>(path: string, formData: FormData) =>
     request<T>(path, { method: "POST", formData }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
+  delete: <T = void>(path: string) => request<T>(path, { method: "DELETE" }),
 };

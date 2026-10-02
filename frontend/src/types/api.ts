@@ -96,6 +96,15 @@ export interface EpisodePage {
   pages: number;
 }
 
+export interface ImportReport {
+  total_rows: number;
+  imported: number;
+  duplicate: number;
+  invalid: number;
+  reasons: Record<string, number>;
+  examples: Record<string, string[]>;
+}
+
 export interface AnalyticsRow {
   day: string;
   robot_id: string;

@@ -195,13 +195,18 @@ def import_episode_rows(db: Session, raw_rows: list[dict]) -> ImportReport:
     db.commit()
 
     if to_insert:
-        expected_ids = [v["episode_id"] for v in to_insert]
-        actually_there = db.execute(
-            select(Episode.episode_id).where(Episode.episode_id.in_(expected_ids))
-        ).scalars()
+        # Reconcile in chunks: a single IN (...) with hundreds of thousands of
+        # ids blows past Postgres' 65,535-parameter protocol limit.
+        actually_there: set[str] = set()
+        for start in range(0, len(to_insert), _CHUNK_SIZE):
+            chunk_ids = [v["episode_id"] for v in to_insert[start : start + _CHUNK_SIZE]]
+            found = db.execute(
+                select(Episode.episode_id).where(Episode.episode_id.in_(chunk_ids))
+            ).scalars()
+            actually_there.update(found)
         # Any row we tried to insert that is present was imported (by us or,
         # in a race, by the other transaction - still not a duplicate record).
-        inserted = len(set(actually_there))
+        inserted = len(actually_there)
 
     return ImportReport(
         total_rows=total,

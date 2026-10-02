@@ -10,8 +10,12 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      staleTime: 10_000,
-      refetchOnWindowFocus: false,
+      // Data is always considered stale: switching pages, refocusing the tab,
+      // or remounting a component immediately revalidates in the background,
+      // so the UI never needs a manual reload to reflect the current state.
+      staleTime: 0,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     },
   },
 });

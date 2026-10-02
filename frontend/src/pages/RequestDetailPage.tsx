@@ -6,6 +6,7 @@ import {
   getRequest,
   listEpisodes,
   transitionRequest,
+  unassignEpisode,
 } from "../api/endpoints";
 import { ApiRequestError } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
@@ -51,6 +52,7 @@ function AssignmentPanel({ requestId }: { requestId: string }) {
   const [quality, setQuality] = useState<EpisodeQuality | "">("");
   const [page, setPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
 
   // Debounce the task-name filter (spec 12.7).
   useEffect(() => {
@@ -74,11 +76,12 @@ function AssignmentPanel({ requestId }: { requestId: string }) {
     onSuccess: () => {
       setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["request", requestId] });
+      queryClient.invalidateQueries({ queryKey: ["requests"] });
       queryClient.invalidateQueries({ queryKey: ["episodes"] });
     },
     onError: (err) => {
       if (err instanceof ApiRequestError && err.status === 409) {
-        setActionError("Episode is no longer available. Refresh the results.");
+        setActionError(err.message);
         queryClient.invalidateQueries({ queryKey: ["episodes"] });
       } else if (err instanceof ApiRequestError) {
         setActionError(err.message);
@@ -87,6 +90,17 @@ function AssignmentPanel({ requestId }: { requestId: string }) {
       }
     },
   });
+
+  // Hide episodes that would exceed the request's remaining capacity.
+  useEffect(() => {
+    const q = queryClient.getQueryData<{ assigned_episode_count: number; episodes_requested: number }>([
+      "request",
+      requestId,
+    ]);
+    setRemaining(
+      q ? Math.max(0, q.episodes_requested - q.assigned_episode_count) : null,
+    );
+  }, [queryClient, requestId, episodes.data]);
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white">
@@ -170,14 +184,18 @@ function AssignmentPanel({ requestId }: { requestId: string }) {
                         <QualityBadge quality={ep.quality} />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <Button
-                          variant="secondary"
-                          pending={assign.isPending && assign.variables === ep.episode_id}
-                          pendingLabel="Assigning…"
-                          onClick={() => assign.mutate(ep.episode_id)}
-                        >
-                          Assign
-                        </Button>
+                        {remaining !== null && remaining <= 0 ? (
+                          <span className="text-xs text-slate-400">Request full</span>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            pending={assign.isPending && assign.variables === ep.episode_id}
+                            pendingLabel="Assigning…"
+                            onClick={() => assign.mutate(ep.episode_id)}
+                          >
+                            Assign
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -216,11 +234,16 @@ export function RequestDetailPage() {
   const queryClient = useQueryClient();
   const [confirmAction, setConfirmAction] = useState<"accept" | "reject" | "deliver" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewReason, setReviewReason] = useState("");
+  const [unassignTarget, setUnassignTarget] = useState<string | null>(null); // assignment id
 
   const request = useQuery({
     queryKey: ["request", id],
     queryFn: () => getRequest(id!),
     enabled: Boolean(id),
+    // Background poll: status changes (delivery, accept/reject, assignments)
+    // by the other party show up without a manual reload.
+    refetchInterval: 10_000,
   });
 
   const transition = useMutation({
@@ -229,11 +252,31 @@ export function RequestDetailPage() {
     onSuccess: () => {
       setConfirmAction(null);
       setActionError(null);
+      setReviewReason("");
       queryClient.invalidateQueries({ queryKey: ["request", id] });
       queryClient.invalidateQueries({ queryKey: ["requests"] });
     },
     onError: (err) => {
       setConfirmAction(null);
+      setActionError(
+        err instanceof ApiRequestError
+          ? err.message
+          : "The server is currently unavailable. Please try again.",
+      );
+    },
+  });
+
+  const unassign = useMutation({
+    mutationFn: (assignmentId: string) => unassignEpisode(id!, assignmentId),
+    onSuccess: () => {
+      setUnassignTarget(null);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["request", id] });
+      queryClient.invalidateQueries({ queryKey: ["requests"] });
+      queryClient.invalidateQueries({ queryKey: ["episodes"] });
+    },
+    onError: (err) => {
+      setUnassignTarget(null);
       setActionError(
         err instanceof ApiRequestError
           ? err.message
@@ -273,6 +316,7 @@ export function RequestDetailPage() {
   const canDeliver = isOperator && r.status === "in_progress";
   const canReview = isClient && r.status === "delivered";
   const readyForDelivery = assigned >= r.episodes_requested;
+  const canModifyAssignments = isOperator && (r.status === "submitted" || r.status === "in_progress");
 
   const runTransition = (status: RequestStatus, reason?: string) => {
     transition.mutate({ status, reason });
@@ -344,6 +388,7 @@ export function RequestDetailPage() {
                       <th className="px-4 py-2">Task</th>
                       <th className="px-4 py-2">Quality</th>
                       <th className="px-4 py-2">Assigned</th>
+                      {canModifyAssignments && <th className="px-4 py-2 text-right"><span className="sr-only">Actions</span></th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -358,6 +403,19 @@ export function RequestDetailPage() {
                           {a.episode ? <QualityBadge quality={a.episode.quality} /> : "—"}
                         </td>
                         <td className="px-4 py-2 text-slate-500">{formatDateTime(a.assigned_at)}</td>
+                        {canModifyAssignments && (
+                          <td className="px-4 py-2 text-right">
+                            <Button
+                              variant="ghost"
+                              className="text-xs text-red-600 hover:bg-red-50"
+                              pending={unassign.isPending && unassign.variables === a.id}
+                              pendingLabel="Removing…"
+                              onClick={() => setUnassignTarget(a.id)}
+                            >
+                              Unassign
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -467,16 +525,60 @@ export function RequestDetailPage() {
         onConfirm={() => runTransition("accepted")}
         onCancel={() => setConfirmAction(null)}
       />
+      {confirmAction === "reject" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Reject this delivery?"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmAction(null);
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-900/5">
+            <h2 className="text-sm font-semibold text-slate-900">Reject this delivery?</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-500">
+              This will return the request to the work queue. Tell the operator what
+              needs to change (optional):
+            </p>
+            <textarea
+              className="mt-3 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              rows={3}
+              maxLength={500}
+              placeholder="e.g. wrong task — I asked for pour water episodes"
+              value={reviewReason}
+              onChange={(e) => setReviewReason(e.target.value)}
+              autoFocus
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConfirmAction(null)} disabled={transition.isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                pending={transition.isPending}
+                pendingLabel="Rejecting…"
+                onClick={() => runTransition("rejected", reviewReason.trim() || undefined)}
+              >
+                Reject
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
-        open={confirmAction === "reject"}
-        title="Reject this delivery?"
-        message="This will return the request to the work queue."
-        confirmLabel="Reject"
+        open={unassignTarget !== null}
+        title="Unassign this episode?"
+        message="The episode will be freed and can be assigned to another request. The removal is recorded in the status history."
+        confirmLabel="Unassign"
         danger
-        pending={transition.isPending}
-        pendingLabel="Rejecting…"
-        onConfirm={() => runTransition("rejected")}
-        onCancel={() => setConfirmAction(null)}
+        pending={unassign.isPending}
+        pendingLabel="Unassigning…"
+        onConfirm={() => {
+          if (unassignTarget) unassign.mutate(unassignTarget);
+        }}
+        onCancel={() => setUnassignTarget(null)}
       />
     </div>
   );

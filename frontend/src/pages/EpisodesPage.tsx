@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { listEpisodes } from "../api/endpoints";
+import { importEpisodes, listEpisodes } from "../api/endpoints";
+import { ApiRequestError } from "../api/client";
 import {
+  Button,
   EmptyState,
   ErrorState,
   Field,
@@ -12,6 +14,7 @@ import {
   QualityBadge,
   Select,
 } from "../components/ui";
+import type { ImportReport } from "../types/api";
 import type { EpisodeQuality } from "../types/api";
 
 function formatDate(iso: string): string {
@@ -30,6 +33,98 @@ function formatDuration(seconds: number): string {
 function pageParam(value: string | null, fallback: number): number {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+// --- CSV import (operator) ----------------------------------------------------
+
+function ImportPanel() {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [report, setReport] = useState<ImportReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const importMutation = useMutation({
+    mutationFn: importEpisodes,
+    onSuccess: (rep) => {
+      setReport(rep);
+      setError(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (rep.imported > 0) {
+        queryClient.invalidateQueries({ queryKey: ["episodes"] });
+        queryClient.invalidateQueries({ queryKey: ["analytics"] });
+      }
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiRequestError ? err.message : "Import failed. Please try again.",
+      ),
+  });
+
+  const onFile = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setReport(null);
+    setError(null);
+    importMutation.mutate(file);
+  };
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Import episodes from CSV</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Idempotent: re-uploading the same file never creates duplicates.
+          </p>
+        </div>
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => onFile(e.target.files)}
+            aria-label="CSV file to import"
+          />
+          <Button
+            pending={importMutation.isPending}
+            pendingLabel="Importing…"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Upload CSV
+          </Button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+          {error}
+        </div>
+      )}
+
+      {report && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm" role="status">
+          <p className="font-medium text-slate-700">
+            Import complete: {report.imported.toLocaleString()} imported ·{" "}
+            {report.duplicate.toLocaleString()} duplicate · {report.invalid.toLocaleString()} invalid
+            (of {report.total_rows.toLocaleString()} rows)
+          </p>
+          {Object.keys(report.reasons).length > 0 && (
+            <ul className="mt-1.5 list-inside list-disc text-xs text-slate-500">
+              {Object.entries(report.reasons).map(([reason, count]) => (
+                <li key={reason}>
+                  {reason}: {count.toLocaleString()}
+                  {report.examples[reason]?.length ? (
+                    <span className="text-slate-400"> e.g. {report.examples[reason].join(", ")}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function EpisodesPage() {
@@ -83,6 +178,8 @@ export function EpisodesPage() {
           Browse recorded episode metadata. Filter by task and quality.
         </p>
       </div>
+
+      <ImportPanel />
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
         <div className="w-full sm:w-64">

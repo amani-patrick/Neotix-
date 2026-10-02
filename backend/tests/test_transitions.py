@@ -90,7 +90,7 @@ def test_client_sees_only_own_requests(client):
     b = _login(client, "client-b@example.com", "client123")
     mine = _create_request(client, a)
 
-    other_list = client.get("/requests", headers=auth_header(b)).json()
+    other_list = client.get("/requests", headers=auth_header(b)).json()["items"]
     assert all(r["id"] != mine["id"] for r in other_list)
 
     # Direct ID access is 404 (not 403) so ids are not enumerable.
@@ -107,7 +107,9 @@ def test_operator_sees_all_requests(client):
     _create_request(client, a)
     _create_request(client, b)
     ops = _login(client, "ops1@example.com", "ops123")
-    assert len(client.get("/requests", headers=auth_header(ops)).json()) == 2
+    page = client.get("/requests", headers=auth_header(ops)).json()
+    assert page["total"] == 2
+    assert len(page["items"]) == 2
 
 
 # --- transition matrix -------------------------------------------------------
